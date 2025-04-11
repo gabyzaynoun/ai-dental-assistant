@@ -43,9 +43,3 @@ ui-debug.log
 # OS files
 .DS_Store
 Thumbs.db
-
-node_modules/
-dist/
-.vscode/
-.env
-.DS_Store
