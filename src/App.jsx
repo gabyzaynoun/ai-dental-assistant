@@ -624,33 +624,6 @@ function App() {
   const [input, setInput] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
   
-  // API key handling with encryption - IMPROVED
-  const [apiKey, setApiKey] = React.useState(() => {
-    // First try to get the API key from environment variables
-    const envApiKey = import.meta.env.VITE_OPENAI_API_KEY;
-    if (envApiKey) {
-      console.log("Using API key from environment variables");
-      return envApiKey;
-    }
-    
-    // Then try to get it from local storage
-    try {
-      const storedKey = localStorage.getItem('encrypted_openai_api_key');
-      if (storedKey) {
-        const decryptedKey = decryptData(storedKey);
-        console.log("Using API key from local storage");
-        return decryptedKey;
-      }
-    } catch (error) {
-      console.error("Error retrieving API key from local storage:", error);
-    }
-    
-    console.log("No API key found");
-    return '';
-  });
-  
-  const [apiKeyError, setApiKeyError] = React.useState(false);
-  
   // For mobile responsiveness
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
   
@@ -1370,17 +1343,6 @@ function App() {
 
   // ========== PERSISTENCE ==========
 
-  // Check API key availability when component mounts
-  React.useEffect(() => {
-    if (apiKey) {
-      console.log("API key is set and available");
-      setApiKeyError(false);
-    } else {
-      console.warn("No API key is set. AI responses won't work until an API key is provided.");
-      setApiKeyError(true);
-    }
-  }, []);
-
   // Save allChats to localStorage whenever it changes
   React.useEffect(() => {
     try {
@@ -1463,13 +1425,6 @@ function App() {
   React.useEffect(() => {
     localStorage.setItem('useTypingAnimation', useTypingAnimation.toString());
   }, [useTypingAnimation]);
-  
-  // Save encrypted API key
-  React.useEffect(() => {
-    if (apiKey) {
-      localStorage.setItem('encrypted_openai_api_key', encryptData(apiKey));
-    }
-  }, [apiKey]);
 
   // Auto-scroll to bottom when messages change
   React.useEffect(() => {
@@ -1511,50 +1466,22 @@ function App() {
         .map(msg => `${msg.role === 'user' ? 'Patient' : 'Assistant'}: ${msg.content}`)
         .join('\n\n');
       
-      // Get the API key to use
-      const effectiveApiKey = import.meta.env.VITE_OPENAI_API_KEY || apiKey;
-      
-      if (!effectiveApiKey) {
-        throw new Error("No API key available for summary generation");
-      }
-      
-      // Create prompt for summarization
-      const systemPrompt = {
-        role: 'system',
-        content: 'You are a helpful assistant that summarizes dental consultations. Create a concise 3-sentence summary of the conversation, focusing on the main dental issues, advice given, and any follow-up needed. Be professional but friendly.'
-      };
-      
-      const userPrompt = {
-        role: 'user',
-        content: `Please summarize this dental consultation in exactly 3 sentences:\n\n${conversationText}`
-      };
-      
-      console.log("Generating summary for chat:", currentChatId);
-      
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      // Call your backend summary endpoint
+      const response = await fetch('/api/summary', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${effectiveApiKey}`
         },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [systemPrompt, userPrompt]
-        })
+        body: JSON.stringify({ conversation: conversationText })
       });
       
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData?.error?.message || `API error (${res.status})`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData?.error?.message || `API error (${response.status})`);
       }
       
-      const data = await res.json();
-      
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error("Invalid response format from OpenAI");
-      }
-      
-      setChatSummary(data.choices[0].message.content);
+      const data = await response.json();
+      setChatSummary(data.summary);
       toast.success('Summary generated successfully');
     } catch (error) {
       console.error('Summary generation error:', error);
@@ -1703,7 +1630,7 @@ function App() {
   
   // ========== GPT LOGIC ==========
 
-  // IMPROVED handleSend function with better error handling and debugging
+  // IMPROVED handleSend function that uses the backend API
   const handleSend = async () => {
     // 1. Check that there is non-empty input
     if (!input.trim()) return;
@@ -1714,20 +1641,10 @@ function App() {
       return;
     }
   
-    // 3. Get the API key - prioritize the one from .env file
-    const effectiveApiKey = import.meta.env.VITE_OPENAI_API_KEY || apiKey;
-    
-    // Validate that the API key is present
-    if (!effectiveApiKey) {
-      toast.error("Missing OpenAI API key. Please set it in your settings.");
-      setApiKeyError(true);
-      return;
-    }
-  
-    // 4. Indicate loading state
+    // 3. Indicate loading state
     setIsLoading(true);
   
-    // 5. Build the user's message and update the local state
+    // 4. Build the user's message and update the local state
     const userMessage = { 
       role: 'user', 
       content: input.trim(),
@@ -1741,52 +1658,36 @@ function App() {
     // Clear the input field in the UI
     setInput('');
   
-    // 6. Construct our system prompt
-    const systemPrompt = {
-      role: 'system',
-      content: 'You are a professional dental assistant. Be concise, friendly, and clear when replying to patients.'
-    };
-  
-    // 7. Prepare the request payload for OpenAI
-    const payload = {
-      model: 'gpt-3.5-turbo',
-      messages: [systemPrompt, ...updatedMessages]
-    };
-  
-    // For debugging
-    console.log("Sending request to OpenAI with", updatedMessages.length, "messages");
-  
     try {
-      // Make the API call
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      // Call your backend API instead of OpenAI directly
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${effectiveApiKey}`
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          messages: updatedMessages
+        })
       });
   
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error?.message || `API error (${response.status}): ${JSON.stringify(errorData.error)}`);
+        throw new Error(errorData.error || `API error (${response.status})`);
       }
   
       const data = await response.json();
   
       // Check if we got a valid response with choices
       if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error("Invalid response format from OpenAI: " + JSON.stringify(data));
+        throw new Error("Invalid response format from API");
       }
   
-      // 9. Add the AI's reply to our messages
+      // Add the AI's reply to our messages
       const aiReply = {
         role: 'assistant',
         content: data.choices[0].message.content,
         timestamp: new Date().toISOString(),
       };
-      
-      console.log("Received AI response:", aiReply.content.substring(0, 50) + "...");
       
       // Update the state with the AI's message
       const messagesWithReply = [...updatedMessages, aiReply];
@@ -1805,8 +1706,7 @@ function App() {
       });
       
     } catch (error) {
-      // Better error handling
-      console.error('Error calling OpenAI API:', error);
+      console.error('Error calling API:', error);
       
       // Create an error message
       const errorMessage = { 
@@ -2111,31 +2011,6 @@ function App() {
               )}
             </div>
 
-            {apiKeyError && (
-              <div className={`${isDarkMode ? 'bg-red-900 border-red-800' : 'bg-red-100 border-red-400'} text-red-700 dark:text-red-300 px-4 py-3 rounded mb-4 border`}>
-                <p><strong>API Key Error:</strong> Your OpenAI API key appears to be invalid or not set in the environment variables.</p>
-                <div className="mt-2">
-                  <input 
-                    type="password"
-                    placeholder="Enter OpenAI API key"
-                    className={`p-2 border rounded mr-2 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                  />
-                  <button 
-                    onClick={() => {
-                      localStorage.setItem('encrypted_openai_api_key', encryptData(apiKey));
-                      setApiKeyError(false);
-                      toast.success('API key saved securely');
-                    }}
-                    className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            )}
-
             {currentChatId ? (
               <>
                 {/* Chat Summary */}
@@ -2232,7 +2107,7 @@ function App() {
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={handleKeyDown}
                       placeholder="Ask the assistant something..."
-                      disabled={isLoading || apiKeyError}
+                      disabled={isLoading}
                     />
                    
                   </div>
@@ -2243,12 +2118,12 @@ function App() {
                 />
                   <button
                     className={`text-white px-4 py-2 rounded ${
-                      isLoading || apiKeyError || !input.trim()
+                      isLoading || !input.trim()
                         ? 'bg-gray-400 cursor-not-allowed'
                         : isDarkMode ? 'bg-blue-700 hover:bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'
                     }`}
                     onClick={handleSend}
-                    disabled={isLoading || apiKeyError || !input.trim()}
+                    disabled={isLoading || !input.trim()}
                   >
                     {isLoading ? 'Sending...' : 'Send'}
                   </button>
