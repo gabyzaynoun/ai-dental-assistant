@@ -65,3 +65,9 @@ Collapsible sidebar for smaller screens
 Touch-friendly controls
 Optimized chat view for mobile devices
 
+📬 Contact
+
+Author: Gaby Zaynoun
+📧 Email: gabyzaynoun6@gmail.com
+🔗 GitHub: https://github.com/gabyzaynoun
+linkedin: https://www.linkedin.com/in/gaby-zaynoun-a453631bb/
